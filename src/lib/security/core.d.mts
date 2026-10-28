@@ -1,0 +1,8 @@
+export declare const CODE_ALPHABET: string;
+export declare function generateCode(): string;
+export declare function normalizeCode(input: unknown): string | null;
+export declare function hashCode(canonicalCode: string, pepper: string): string;
+export declare function hashPassword(password: string): Promise<string>;
+export declare function verifyPassword(password: string, stored: string): Promise<boolean>;
+export declare function randomToken(): string;
+export declare function sha256(value: string): string;

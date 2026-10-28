@@ -1,0 +1,37 @@
+{
+  "name": "cinemente",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CineMente — plataforma de streaming educacional para professores de Filosofia e Sociologia",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "setup": "node scripts/setup.mjs",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "codes": "node scripts/codes.mjs",
+    "admin:create": "node scripts/admin.mjs",
+    "db:supabase-sql": "node scripts/build-supabase-sql.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "next": "^15.5.0",
+    "pg": "^8.13.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.7.0"
+  }
+}
