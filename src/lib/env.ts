@@ -9,6 +9,12 @@ export const env = {
   get codePepper() {
     return required('CODE_PEPPER');
   },
+  get sessionSecret() {
+    return required('SESSION_SECRET');
+  },
+  get webhookSecret() {
+    return required('WEBHOOK_SECRET');
+  },
   get isProd() {
     return process.env.NODE_ENV === 'production';
   },

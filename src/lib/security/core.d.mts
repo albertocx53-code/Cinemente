@@ -6,3 +6,7 @@ export declare function hashPassword(password: string): Promise<string>;
 export declare function verifyPassword(password: string, stored: string): Promise<boolean>;
 export declare function randomToken(): string;
 export declare function sha256(value: string): string;
+export declare function encryptText(plain: string, secret: string): string;
+export declare function decryptText(payload: string, secret: string): string;
+export declare function safeEqual(a: unknown, b: unknown): boolean;
+export declare function hmacHex(algo: string, key: string, data: string): string;

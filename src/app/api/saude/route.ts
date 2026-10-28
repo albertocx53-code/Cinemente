@@ -19,6 +19,9 @@ export async function GET() {
     DATABASE_URL: process.env.DATABASE_URL ? 'definido' : 'FALTANDO',
     DATABASE_SSL: process.env.DATABASE_SSL ?? 'FALTANDO',
     CODE_PEPPER: process.env.CODE_PEPPER ? (process.env.CODE_PEPPER.length >= 32 ? 'definido' : 'CURTO DEMAIS') : 'FALTANDO',
+    SESSION_SECRET: process.env.SESSION_SECRET ? (process.env.SESSION_SECRET.length >= 32 ? 'definido' : 'CURTO DEMAIS') : 'FALTANDO',
+    WEBHOOK_SECRET: process.env.WEBHOOK_SECRET ? 'definido' : 'FALTANDO',
+    EMAIL: process.env.RESEND_API_KEY && process.env.EMAIL_FROM ? 'configurado' : 'não configurado (código só na tela)',
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'FALTANDO',
   };
   let banco: Record<string, unknown>;

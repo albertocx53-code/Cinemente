@@ -1,7 +1,7 @@
 // Núcleo criptográfico do CineMente.
 // Arquivo .mjs puro para ser usado tanto pelo app (Next.js) quanto pelos
 // scripts de linha de comando (gerar códigos, criar admin), sem compilação.
-import { createHash, createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCb);
@@ -63,4 +63,40 @@ export function randomToken() {
 
 export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+// ---------------------------------------------------------------------
+// Criptografia reversível (AES-256-GCM) para a cópia do código entregue ao comprador.
+// A chave vem de SESSION_SECRET; trocar SESSION_SECRET impede reexibir códigos antigos
+// (os códigos continuam válidos para ativação, pois a validação usa o hash).
+// ---------------------------------------------------------------------
+function deliveryKey(secret) {
+  if (!secret || secret.length < 32) throw new Error('SESSION_SECRET ausente ou curto demais (mínimo 32 caracteres).');
+  return createHash('sha256').update(`cinemente:entrega:${secret}`).digest();
+}
+
+export function encryptText(plain, secret) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', deliveryKey(secret), iv);
+  const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  return `v1.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${ct.toString('base64url')}`;
+}
+
+export function decryptText(payload, secret) {
+  const [v, iv, tag, ct] = String(payload).split('.');
+  if (v !== 'v1' || !iv || !tag || !ct) throw new Error('Formato criptografado inválido');
+  const decipher = createDecipheriv('aes-256-gcm', deliveryKey(secret), Buffer.from(iv, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+  return Buffer.concat([decipher.update(Buffer.from(ct, 'base64url')), decipher.final()]).toString('utf8');
+}
+
+/** Comparação em tempo constante de dois textos (tokens de webhook). */
+export function safeEqual(a, b) {
+  const x = Buffer.from(String(a ?? ''));
+  const y = Buffer.from(String(b ?? ''));
+  return x.length === y.length && x.length > 0 && timingSafeEqual(x, y);
+}
+
+export function hmacHex(algo, key, data) {
+  return createHmac(algo, key).update(data).digest('hex');
 }

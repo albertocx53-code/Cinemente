@@ -12,7 +12,8 @@ if (!existsSync('.env.local')) {
   const example = readFileSync('.env.example', 'utf8');
   const env = example
     .replace(/^CODE_PEPPER=.*$/m, `CODE_PEPPER=${randomBytes(32).toString('hex')}`)
-    .replace(/^SESSION_SECRET=.*$/m, `SESSION_SECRET=${randomBytes(32).toString('hex')}`);
+    .replace(/^SESSION_SECRET=.*$/m, `SESSION_SECRET=${randomBytes(32).toString('hex')}`)
+    .replace(/^WEBHOOK_SECRET=.*$/m, `WEBHOOK_SECRET=${randomBytes(24).toString('hex')}`);
   writeFileSync('.env.local', env);
   console.log('✓ .env.local criado com segredos aleatórios');
 }
