@@ -23,16 +23,42 @@ const cents = (v: unknown) => {
   return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
 };
 
-function mapStatus(raw: string): PurchaseStatus | 'ignored' {
+// A ordem importa: estados negativos e "aguardando" são testados ANTES de "aprovado",
+// para que textos como "unpaid", "pix_created" ou "not_approved" nunca liberem acesso.
+export function mapStatus(raw: string): PurchaseStatus | 'ignored' {
   const s = raw.toLowerCase();
-  if (/(approved|complete|paid|aprovad|pago|confirmed)/.test(s)) return 'approved';
-  if (/(refund|reembols|devolv)/.test(s)) return 'refunded';
-  if (/(chargeback|charged_?back|protest|contestad|dispute)/.test(s)) return 'chargeback';
-  if (/(cancel|expired|expirad)/.test(s)) return 'canceled';
-  if (/(refused|recusad|declined|negad)/.test(s)) return 'refused';
-  if (/(waiting|pending|aguardando|billet_printed|pix_created|em_analise|delayed)/.test(s)) return 'pending';
+  if (!s) return 'ignored';
+  if (/(refund|reembols|devolv|estorn)/.test(s)) return 'refunded';
+  if (/(chargeback|charged_?back|protest|contestad|dispute|disputa)/.test(s)) return 'chargeback';
+  if (/(cancel|expired|expirad|vencid|abandon)/.test(s)) return 'canceled';
+  if (/(refused|recusad|declined|negad|failed|falh|reprovad|not_?approved|nao_?aprovad)/.test(s)) return 'refused';
+  if (/(waiting|pending|pendente|aguardando|unpaid|not_?paid|nao_?pago|printed|gerad|generated|created|criad|em_analise|analysis|processing|delayed)/.test(s)) return 'pending';
+  if (/(approved|aprovad|complete|conclu|paid|pago|confirmed|confirmad|succeeded|success|sucesso)/.test(s)) return 'approved';
   return 'ignored';
 }
+
+// Busca recursiva de campos em avisos de formato desconhecido (ex.: Wiven).
+type Json = any;
+function findValue(obj: Json, keys: string[], depth = 0): unknown {
+  if (!obj || typeof obj !== 'object' || depth > 5) return undefined;
+  for (const k of keys) {
+    for (const [key, v] of Object.entries(obj)) {
+      if (key.toLowerCase() === k && v !== null && typeof v !== 'object' && String(v).trim()) return v;
+    }
+  }
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === 'object') {
+      const found = findValue(v, keys, depth + 1);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+const EMAIL_KEYS = ['email', 'customer_email', 'buyer_email', 'client_email', 'cliente_email', 'email_cliente', 'payer_email'];
+const ORDER_KEYS = ['pedido', 'order_id', 'orderid', 'transaction_id', 'transaction', 'transacao', 'sale_id', 'saleid', 'venda_id', 'id_venda', 'payment_id', 'charge_id', 'order_code', 'code', 'codigo', 'id'];
+const STATUS_KEYS = ['status', 'payment_status', 'order_status', 'sale_status', 'status_pagamento', 'situacao', 'event', 'evento', 'event_type', 'type', 'webhook_event_type'];
+const NAME_KEYS = ['nome', 'name', 'full_name', 'customer_name', 'buyer_name', 'nome_cliente'];
+const AMOUNT_KEYS = ['valor', 'amount', 'total', 'price', 'value', 'valor_total'];
 
 /** Converte o aviso de cada plataforma para um formato único. */
 export function normalizeEvent(payload: any, hint?: string | null): NormalizedEvent | null {
@@ -75,20 +101,44 @@ export function normalizeEvent(payload: any, hint?: string | null): NormalizedEv
     };
   }
 
-  // Formato genérico: { pedido, email, nome, status, valor }
-  const orderId = str(payload.pedido ?? payload.order_id ?? payload.transaction ?? payload.id);
-  const email = str(payload.email ?? payload.buyer_email ?? payload.customer?.email).toLowerCase();
-  if (!orderId || !email) return null;
-  const statusRaw = str(payload.status ?? 'approved');
+  // Formato genérico e plataformas sem documentação pública (ex.: Wiven).
+  // Procura os campos em qualquer nível do aviso, preferindo os dados do comprador.
+  const PERSON = ['customer', 'buyer', 'client', 'cliente', 'comprador', 'payer', 'user', 'usuario'];
+  const ORDER_BOX = ['order', 'sale', 'venda', 'pedido', 'transaction', 'transacao', 'payment', 'pagamento', 'charge', 'data'];
+  const inBoxes = (boxes: string[], keys: string[]) => {
+    for (const b of boxes) {
+      for (const [k, v] of Object.entries(payload)) {
+        if (k.toLowerCase() === b && v && typeof v === 'object') {
+          const found = findValue(v, keys);
+          if (found !== undefined) return found;
+        }
+      }
+      const nestedData = payload.data && typeof payload.data === 'object' ? (payload.data as Json)[b] : undefined;
+      if (nestedData && typeof nestedData === 'object') {
+        const found = findValue(nestedData, keys);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+  const specificOrderKeys = ORDER_KEYS.filter((k) => !['id', 'code', 'codigo'].includes(k));
+
+  const email = str(payload.email ?? inBoxes(PERSON, EMAIL_KEYS) ?? findValue(payload, EMAIL_KEYS)).toLowerCase();
+  const orderId = str(
+    payload.pedido ?? findValue(payload, specificOrderKeys) ?? inBoxes(ORDER_BOX, ['id', 'code', 'codigo']) ?? payload.id,
+  );
+  if (!orderId || !email.includes('@')) return null;
+  // Sem status explícito, o aviso NÃO libera acesso (fica guardado para análise).
+  const statusRaw = str(payload.status ?? inBoxes(ORDER_BOX, STATUS_KEYS) ?? findValue(payload, STATUS_KEYS));
   return {
     provider: str(hint) || 'generico',
-    eventId: str(payload.evento_id ?? payload.event_id) || `${orderId}:${statusRaw}`,
-    eventType: statusRaw,
+    eventId: str(payload.evento_id ?? payload.event_id ?? payload.webhook_id) || `${orderId}:${statusRaw}`,
+    eventType: statusRaw || 'sem_status',
     orderId,
     status: mapStatus(statusRaw),
     email,
-    name: str(payload.nome ?? payload.name ?? payload.customer?.name) || null,
-    amountCents: cents(payload.valor ?? payload.amount),
+    name: str(payload.nome ?? payload.name ?? inBoxes(PERSON, NAME_KEYS)) || null,
+    amountCents: cents(payload.valor ?? payload.amount ?? inBoxes(ORDER_BOX, AMOUNT_KEYS)),
   };
 }
 

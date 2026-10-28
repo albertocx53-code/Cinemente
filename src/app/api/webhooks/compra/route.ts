@@ -2,7 +2,7 @@
 //
 // URL para cadastrar na plataforma de vendas:
 //   https://SEU-SITE/api/webhooks/compra?token=SEU_WEBHOOK_SECRET
-//   (opcional: &provedor=hotmart | kiwify | generico)
+//   (opcional: &provedor=wiven | hotmart | kiwify | generico)
 //
 // Também aceita, sem token na URL:
 //   - Hotmart: cabeçalho X-HOTMART-HOTTOK igual ao WEBHOOK_SECRET
@@ -10,7 +10,8 @@
 //
 // O acesso NUNCA é liberado pela página de obrigado: só por este aviso validado.
 import { NextResponse, type NextRequest } from 'next/server';
-import { hmacHex, safeEqual } from '@/lib/security/core.mjs';
+import { hmacHex, safeEqual, sha256 } from '@/lib/security/core.mjs';
+import { query } from '@/lib/db';
 import { env } from '@/lib/env';
 import { markEmail, normalizeEvent, processPurchaseEvent } from '@/lib/purchases';
 import { sendAccessCodeEmail } from '@/lib/email';
@@ -51,9 +52,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, erro: 'JSON inválido' }, { status: 400 });
   }
 
-  const event = normalizeEvent(payload, req.nextUrl.searchParams.get('provedor'));
+  const hint = req.nextUrl.searchParams.get('provedor');
+  const event = normalizeEvent(payload, hint);
   if (!event) {
-    // Respondemos 200 para a plataforma não ficar reenviando um aviso que não usamos
+    // Guardamos o aviso para análise (assim dá para ajustar a leitura de plataformas novas)
+    // e respondemos 200 para a plataforma não ficar reenviando.
+    await query(
+      `insert into webhook_events (provider, event_id, event_type, payload, status, error, processed_at)
+       values ($1, $2, 'desconhecido', $3, 'ignored', 'formato não reconhecido: sem número do pedido ou e-mail', now())
+       on conflict (provider, event_id) do nothing`,
+      [hint || 'desconhecido', sha256(raw), JSON.stringify(payload ?? {})],
+    );
     return NextResponse.json({ ok: true, resultado: 'ignorado', motivo: 'sem número do pedido ou e-mail' });
   }
 
